@@ -8,3 +8,11 @@ dependencies = [
     "openai>=2.37.0",
     "tiktoken>=0.13.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

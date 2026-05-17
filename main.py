@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 from time import perf_counter
 
+import openai
 from openai import OpenAI
 import tiktoken
 
@@ -110,6 +111,58 @@ def format_seconds(seconds: float) -> str:
     return f"{seconds:.2f}s"
 
 
+def format_openai_error(error: openai.OpenAIError) -> str:
+    body = getattr(error, "body", None)
+    error_body = body.get("error", {}) if isinstance(body, dict) else {}
+    error_code = error_body.get("code")
+    error_type = error_body.get("type")
+
+    if (
+        isinstance(error, openai.RateLimitError)
+        and (error_code == "insufficient_quota" or error_type == "insufficient_quota")
+    ):
+        return (
+            "OpenAI quota exceeded. Check your plan and billing details. "
+            f"OpenAI error code/type: {error_code or error_type}."
+        )
+
+    return f"OpenAI request failed: {error}"
+
+
+def generate_audio_files(
+    *,
+    client: OpenAI,
+    voices: list[str],
+    text: str,
+    model: str,
+    output_dir: Path,
+    timestamp: str | None = None,
+) -> list[Path]:
+    timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
+    generated_files: list[Path] = []
+
+    try:
+        for voice in voices:
+            output_path = output_dir / f"{filename_base(text)}-{voice}-{timestamp}.mp3"
+            file_start = perf_counter()
+            print(f"Generating {voice} -> {output_path}...", flush=True)
+            with client.audio.speech.with_streaming_response.create(
+                model=model,
+                voice=voice,
+                input=text,
+                response_format="mp3",
+            ) as response:
+                response.stream_to_file(output_path)
+            generated_files.append(output_path)
+            print(
+                f"Generated {output_path} in {format_seconds(perf_counter() - file_start)}"
+            )
+    except openai.OpenAIError as error:
+        raise SystemExit(format_openai_error(error)) from error
+
+    return generated_files
+
+
 def main() -> None:
     if not os.environ.get("OPENAI_API_KEY"):
         raise SystemExit("Set OPENAI_API_KEY before running this script.")
@@ -125,20 +178,14 @@ def main() -> None:
     client = OpenAI()
     OUTPUT_DIR.mkdir(exist_ok=True)
     total_start = perf_counter()
-    generated_files: list[Path] = []
-
-    for voice in voices:
-        output_path = OUTPUT_DIR / f"{filename_base(text)}-{voice}-{timestamp}.mp3"
-        file_start = perf_counter()
-        with client.audio.speech.with_streaming_response.create(
-            model=model,
-            voice=voice,
-            input=text,
-            response_format="mp3",
-        ) as response:
-            response.stream_to_file(output_path)
-        generated_files.append(output_path)
-        print(f"Generated {output_path} in {format_seconds(perf_counter() - file_start)}")
+    generated_files = generate_audio_files(
+        client=client,
+        voices=voices,
+        text=text,
+        model=model,
+        output_dir=OUTPUT_DIR,
+        timestamp=timestamp,
+    )
 
     total_elapsed = perf_counter() - total_start
     print("\nSummary")
