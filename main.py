@@ -249,7 +249,7 @@ def generate_audio_files(
 def format_cost(total_input_tokens: int, token_price: float | None) -> list[str]:
     if token_price is None:
         return [
-            "Estimated cost: unavailable for this model",
+            "Estimated cost: unavailable",
             "Set OPENAI_TTS_USD_PER_1M_TOKENS to calculate it.",
         ]
 
@@ -338,7 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-m",
         "--model",
         default=os.environ.get("OPENAI_TTS_MODEL", DEFAULT_MODEL),
-        help=f"OpenAI TTS model. Default: %(default)s.",
+        help="OpenAI TTS model. Default: %(default)s.",
     )
     parser.add_argument(
         "--format",

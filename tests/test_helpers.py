@@ -1,7 +1,7 @@
 import pytest
 
 import main
-from main import filename_base, format_seconds, usd_per_1m_input_tokens
+from main import filename_base, format_cost, format_seconds, usd_per_1m_input_tokens
 
 
 @pytest.mark.parametrize(
@@ -30,6 +30,20 @@ def test_filename_base_normalizes_text(text: str, expected: str) -> None:
 )
 def test_format_seconds_uses_two_decimal_places(seconds: float, expected: str) -> None:
     assert format_seconds(seconds) == expected
+
+
+def test_format_cost_is_unavailable_without_configured_price() -> None:
+    assert format_cost(1000, None) == [
+        "Estimated cost: unavailable",
+        "Set OPENAI_TTS_USD_PER_1M_TOKENS to calculate it.",
+    ]
+
+
+def test_format_cost_calculates_from_configured_price() -> None:
+    assert format_cost(2500, 2.0) == [
+        "Estimated cost: $0.005000 USD",
+        "Price used: $2 USD per 1M input tokens",
+    ]
 
 
 def test_usd_per_1m_input_tokens_returns_none_without_price_override(monkeypatch) -> None:
