@@ -1,6 +1,6 @@
 # voicer
 
-Generate OpenAI text-to-speech MP3 files from an interactive prompt.
+Generate OpenAI text-to-speech audio from a practical CLI.
 
 ## Setup
 
@@ -17,17 +17,48 @@ OPENAI_TTS_MODEL=gpt-4o-mini-tts
 OPENAI_TTS_USD_PER_1M_TOKENS=0.60
 ```
 
-## Run
+## Usage
 
 ```sh
-uv run --env-file .env python main.py
+uv run --env-file .env voicer "Hello from voicer"
 ```
 
-Select one or more voices, paste the text, then submit an empty line. Files are written to `outputs/` as:
+You can also pipe text, read a file, or use the interactive prompt:
+
+```sh
+printf "Hello from stdin" | uv run --env-file .env voicer
+uv run --env-file .env voicer --file script.txt
+uv run --env-file .env voicer
+```
+
+Files are written to `outputs/` as:
 
 ```text
-<text-derived-name>-<voice>-<YYYYMMDD-HHMMSS>.mp3
+<text-derived-name>-<voice>-<YYYYMMDD-HHMMSS>.<format>
 ```
 
-The default model is `gpt-4o-mini-tts`. Override it with `OPENAI_TTS_MODEL` if needed.
-After generation, the script prints estimated input tokens, estimated cost, and total elapsed time.
+## Options
+
+```sh
+uv run voicer --list-voices
+uv run --env-file .env voicer --voice alloy --voice echo "Hello"
+uv run --env-file .env voicer --voice all --format wav --file announcement.txt
+uv run voicer --dry-run --voice marin "Estimate this first"
+uv run --env-file .env voicer --output greeting.mp3 --force "Hello"
+```
+
+Useful flags:
+
+```text
+--voice, -v       Voice name, number, comma-list, or all. Repeatable. Default: alloy.
+--file, -f        Read text from a UTF-8 file.
+--stdin           Read text from stdin explicitly.
+--output-dir      Directory for generated files. Default: outputs.
+--output, -o      Exact output file path. Only valid with one voice.
+--format          mp3, opus, aac, flac, wav, or pcm. Default: mp3.
+--model, -m       OpenAI TTS model. Default: OPENAI_TTS_MODEL or gpt-4o-mini-tts.
+--dry-run         Print token and cost estimates without calling OpenAI.
+--list-voices     Print supported voices.
+```
+
+After generation, `voicer` prints estimated input tokens, estimated cost, and total elapsed time.

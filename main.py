@@ -1,8 +1,11 @@
+import argparse
 from datetime import datetime
 import os
 from pathlib import Path
 import re
+import sys
 from time import perf_counter
+from typing import Sequence, TextIO
 
 import openai
 from openai import OpenAI
@@ -23,9 +26,16 @@ VOICES = (
 )
 DEFAULT_MODEL = "gpt-4o-mini-tts"
 OUTPUT_DIR = Path("outputs")
+DEFAULT_VOICE = "alloy"
+DEFAULT_RESPONSE_FORMAT = "mp3"
+RESPONSE_FORMATS = ("mp3", "opus", "aac", "flac", "wav", "pcm")
 USD_PER_1M_INPUT_TOKENS = {
     "gpt-4o-mini-tts": 0.60,
 }
+
+
+class CliError(ValueError):
+    pass
 
 
 def read_text() -> str:
@@ -45,16 +55,16 @@ def read_text() -> str:
     return text
 
 
-def select_voices() -> list[str]:
-    print("Available voices:")
-    for index, voice in enumerate(VOICES, start=1):
-        print(f"  {index}. {voice}")
-
-    raw_selection = input(
-        "Select voices by number/name, comma-separated, or 'all' [alloy]: "
-    ).strip()
+def parse_voice_selection(
+    raw_selection: str,
+    *,
+    default: str | None = DEFAULT_VOICE,
+) -> list[str]:
+    raw_selection = raw_selection.strip()
     if not raw_selection:
-        return ["alloy"]
+        if default is None:
+            raise CliError("No voices selected.")
+        return [default]
     if raw_selection.lower() == "all":
         return list(VOICES)
 
@@ -73,13 +83,71 @@ def select_voices() -> list[str]:
             selected.append(value)
             continue
 
-        raise SystemExit(f"Unknown voice selection: {item.strip()}")
+        raise CliError(f"Unknown voice selection: {item.strip()}")
 
     selected = list(dict.fromkeys(selected))
     if not selected:
-        raise SystemExit("No voices selected.")
+        raise CliError("No voices selected.")
 
     return selected
+
+
+def select_voices() -> list[str]:
+    print("Available voices:")
+    for index, voice in enumerate(VOICES, start=1):
+        print(f"  {index}. {voice}")
+
+    raw_selection = input(
+        f"Select voices by number/name, comma-separated, or 'all' [{DEFAULT_VOICE}]: "
+    )
+    try:
+        return parse_voice_selection(raw_selection)
+    except CliError as error:
+        raise SystemExit(str(error)) from error
+
+
+def read_stdin(stdin: TextIO | None = None) -> str:
+    stream = stdin if stdin is not None else sys.stdin
+    if stream is None:
+        raise SystemExit("stdin is unavailable.")
+
+    text = stream.read().strip()
+    if not text:
+        raise SystemExit("No text provided on stdin.")
+
+    return text
+
+
+def read_input_file(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        raise SystemExit(f"Could not read input file {path}: {error.strerror}") from error
+
+    if not text:
+        raise SystemExit(f"Input file is empty: {path}")
+
+    return text
+
+
+def resolve_text(*, text: str | None, input_file: Path | None, use_stdin: bool) -> str:
+    sources = sum(source is not None for source in (text, input_file)) + int(use_stdin)
+    if sources > 1:
+        raise SystemExit("Provide text using only one source: argument, --file, or --stdin.")
+
+    if text is not None:
+        text = text.strip()
+        if not text:
+            raise SystemExit("No text provided.")
+        return text
+    if input_file is not None:
+        return read_input_file(input_file)
+    if use_stdin:
+        return read_stdin()
+    if not sys.stdin.isatty():
+        return read_stdin()
+
+    return read_text()
 
 
 def filename_base(text: str) -> str:
@@ -136,21 +204,39 @@ def generate_audio_files(
     text: str,
     model: str,
     output_dir: Path,
+    response_format: str = DEFAULT_RESPONSE_FORMAT,
+    output_file: Path | None = None,
+    overwrite: bool = False,
     timestamp: str | None = None,
 ) -> list[Path]:
     timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
     generated_files: list[Path] = []
 
+    if output_file is not None and len(voices) != 1:
+        raise SystemExit("--output can only be used with one voice.")
+
+    if output_file is None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    elif output_file.parent != Path("."):
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
     try:
         for voice in voices:
-            output_path = output_dir / f"{filename_base(text)}-{voice}-{timestamp}.mp3"
+            output_path = output_file or output_dir / (
+                f"{filename_base(text)}-{voice}-{timestamp}.{response_format}"
+            )
+            if output_path.exists() and not overwrite:
+                raise SystemExit(
+                    f"Output file already exists: {output_path}. Use --force to replace it."
+                )
+
             file_start = perf_counter()
             print(f"Generating {voice} -> {output_path}...", flush=True)
             with client.audio.speech.with_streaming_response.create(
                 model=model,
                 voice=voice,
                 input=text,
-                response_format="mp3",
+                response_format=response_format,
             ) as response:
                 response.stream_to_file(output_path)
             generated_files.append(output_path)
@@ -163,46 +249,209 @@ def generate_audio_files(
     return generated_files
 
 
-def main() -> None:
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise SystemExit("Set OPENAI_API_KEY before running this script.")
+def format_cost(total_input_tokens: int, token_price: float | None) -> list[str]:
+    if token_price is None:
+        return [
+            "Estimated cost: unavailable for this model",
+            "Set OPENAI_TTS_USD_PER_1M_TOKENS to calculate it.",
+        ]
 
-    voices = select_voices()
-    text = read_text()
-    model = os.environ.get("OPENAI_TTS_MODEL", DEFAULT_MODEL)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    estimated_cost = total_input_tokens / 1_000_000 * token_price
+    return [
+        f"Estimated cost: ${estimated_cost:.6f} USD",
+        f"Price used: ${token_price:g} USD per 1M input tokens",
+    ]
+
+
+def print_estimate(*, text: str, voices: list[str], model: str) -> None:
     input_tokens = count_input_tokens(text, model)
     total_input_tokens = input_tokens * len(voices)
     token_price = usd_per_1m_input_tokens(model)
 
-    client = OpenAI()
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    total_start = perf_counter()
-    generated_files = generate_audio_files(
-        client=client,
-        voices=voices,
-        text=text,
-        model=model,
-        output_dir=OUTPUT_DIR,
-        timestamp=timestamp,
+    print("Estimate")
+    print(f"Model: {model}")
+    print(f"Voices: {', '.join(voices)}")
+    print(
+        "Estimated input tokens: "
+        f"{total_input_tokens:,} ({input_tokens:,} per file x {len(voices)})"
     )
+    for line in format_cost(total_input_tokens, token_price):
+        print(line)
 
-    total_elapsed = perf_counter() - total_start
+
+def print_summary(
+    *,
+    generated_files: list[Path],
+    input_tokens: int,
+    voices: list[str],
+    token_price: float | None,
+    total_elapsed: float,
+) -> None:
+    total_input_tokens = input_tokens * len(voices)
+
     print("\nSummary")
     print(f"Files generated: {len(generated_files)}")
     print(
         "Estimated input tokens: "
         f"{total_input_tokens:,} ({input_tokens:,} per file x {len(voices)})"
     )
-    if token_price is None:
-        print("Estimated cost: unavailable for this model")
-        print("Set OPENAI_TTS_USD_PER_1M_TOKENS to calculate it.")
-    else:
-        estimated_cost = total_input_tokens / 1_000_000 * token_price
-        print(f"Estimated cost: ${estimated_cost:.6f} USD")
-        print(f"Price used: ${token_price:g} USD per 1M input tokens")
+    for line in format_cost(total_input_tokens, token_price):
+        print(line)
     print(f"Total time: {format_seconds(total_elapsed)}")
 
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="voicer",
+        description="Generate OpenAI text-to-speech audio files.",
+    )
+    parser.add_argument(
+        "text",
+        nargs="?",
+        help="Text to synthesize. If omitted, voicer reads piped stdin or opens an interactive prompt.",
+    )
+    parser.add_argument(
+        "-f",
+        "--file",
+        type=Path,
+        dest="input_file",
+        help="Read text from a UTF-8 file.",
+    )
+    parser.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read text from stdin explicitly.",
+    )
+    parser.add_argument(
+        "-v",
+        "--voice",
+        action="append",
+        dest="voice_selections",
+        help=(
+            "Voice name, number, comma-list, or 'all'. Repeat the flag for multiple voices. "
+            f"Default: {DEFAULT_VOICE}."
+        ),
+    )
+    parser.add_argument(
+        "--list-voices",
+        action="store_true",
+        help="Print available voices and exit.",
+    )
+    parser.add_argument(
+        "-m",
+        "--model",
+        default=os.environ.get("OPENAI_TTS_MODEL", DEFAULT_MODEL),
+        help=f"OpenAI TTS model. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--format",
+        choices=RESPONSE_FORMATS,
+        default=DEFAULT_RESPONSE_FORMAT,
+        dest="response_format",
+        help=f"Audio response format. Default: {DEFAULT_RESPONSE_FORMAT}.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        dest="output_file",
+        help="Exact output file path. Only valid with one voice.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=OUTPUT_DIR,
+        help=f"Directory for generated files. Default: {OUTPUT_DIR}.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite --output if it already exists.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print token and cost estimates without calling OpenAI.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="voicer 0.1.0",
+    )
+    return parser
+
+
+def resolve_voices(selections: list[str] | None) -> list[str]:
+    if not selections:
+        return [DEFAULT_VOICE]
+
+    voices: list[str] = []
+    for selection in selections:
+        voices.extend(parse_voice_selection(selection, default=None))
+
+    return list(dict.fromkeys(voices))
+
+
+def run(args: argparse.Namespace) -> None:
+    if args.list_voices:
+        for index, voice in enumerate(VOICES, start=1):
+            print(f"{index:>2}. {voice}")
+        return
+
+    try:
+        voices = resolve_voices(args.voice_selections)
+    except CliError as error:
+        raise SystemExit(str(error)) from error
+
+    if args.output_file is not None and len(voices) != 1:
+        raise SystemExit("--output can only be used with one voice.")
+
+    if not args.dry_run and not os.environ.get("OPENAI_API_KEY"):
+        raise SystemExit("Set OPENAI_API_KEY before running this script.")
+
+    text = resolve_text(text=args.text, input_file=args.input_file, use_stdin=args.stdin)
+
+    if args.dry_run:
+        print_estimate(text=text, voices=voices, model=args.model)
+        return
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    input_tokens = count_input_tokens(text, args.model)
+    token_price = usd_per_1m_input_tokens(args.model)
+
+    client = OpenAI()
+    total_start = perf_counter()
+    generated_files = generate_audio_files(
+        client=client,
+        voices=voices,
+        text=text,
+        model=args.model,
+        output_dir=args.output_dir,
+        response_format=args.response_format,
+        output_file=args.output_file,
+        overwrite=args.force,
+        timestamp=timestamp,
+    )
+
+    total_elapsed = perf_counter() - total_start
+    print_summary(
+        generated_files=generated_files,
+        input_tokens=input_tokens,
+        voices=voices,
+        token_price=token_price,
+        total_elapsed=total_elapsed,
+    )
+
+
+def main(argv: Sequence[str] = ()) -> None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    run(args)
+
+
+def cli() -> None:
+    main(sys.argv[1:])
+
+
 if __name__ == "__main__":
-    main()
+    cli()

@@ -1,13 +1,16 @@
 [project]
 name = "voicer"
 version = "0.1.0"
-description = "Add your description here"
+description = "Generate OpenAI text-to-speech audio from a polished CLI."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "openai>=2.37.0",
     "tiktoken>=0.13.0",
 ]
+
+[project.scripts]
+voicer = "main:cli"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
