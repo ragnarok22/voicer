@@ -16,3 +16,5 @@ wheels/
 
 # Generated audio
 outputs/
+
+.DS_Store
