@@ -14,8 +14,10 @@ Optional:
 
 ```sh
 OPENAI_TTS_MODEL=gpt-4o-mini-tts
-OPENAI_TTS_USD_PER_1M_TOKENS=0.60
+OPENAI_TTS_USD_PER_1M_TOKENS=your_current_price_per_1m_input_tokens
 ```
+
+Set `OPENAI_TTS_USD_PER_1M_TOKENS` when you want cost estimates; pricing changes over time, so `voicer` does not assume a default price.
 
 ## Usage
 
@@ -61,4 +63,4 @@ Useful flags:
 --list-voices     Print supported voices.
 ```
 
-After generation, `voicer` prints estimated input tokens, estimated cost, and total elapsed time.
+After generation, `voicer` prints estimated input tokens, estimated cost when configured, and total elapsed time.

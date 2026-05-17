@@ -29,9 +29,6 @@ OUTPUT_DIR = Path("outputs")
 DEFAULT_VOICE = "alloy"
 DEFAULT_RESPONSE_FORMAT = "mp3"
 RESPONSE_FORMATS = ("mp3", "opus", "aac", "flac", "wav", "pcm")
-USD_PER_1M_INPUT_TOKENS = {
-    "gpt-4o-mini-tts": 0.60,
-}
 
 
 class CliError(ValueError):
@@ -167,7 +164,7 @@ def count_input_tokens(text: str, model: str) -> int:
 def usd_per_1m_input_tokens(model: str) -> float | None:
     raw_price = os.environ.get("OPENAI_TTS_USD_PER_1M_TOKENS")
     if raw_price is None:
-        return USD_PER_1M_INPUT_TOKENS.get(model)
+        return None
 
     try:
         return float(raw_price)

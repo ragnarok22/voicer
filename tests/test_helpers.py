@@ -32,16 +32,10 @@ def test_format_seconds_uses_two_decimal_places(seconds: float, expected: str) -
     assert format_seconds(seconds) == expected
 
 
-def test_usd_per_1m_input_tokens_uses_known_model_price(monkeypatch) -> None:
+def test_usd_per_1m_input_tokens_returns_none_without_price_override(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_TTS_USD_PER_1M_TOKENS", raising=False)
 
-    assert usd_per_1m_input_tokens("gpt-4o-mini-tts") == 0.60
-
-
-def test_usd_per_1m_input_tokens_returns_none_for_unknown_model(monkeypatch) -> None:
-    monkeypatch.delenv("OPENAI_TTS_USD_PER_1M_TOKENS", raising=False)
-
-    assert usd_per_1m_input_tokens("custom-model") is None
+    assert usd_per_1m_input_tokens("gpt-4o-mini-tts") is None
 
 
 def test_usd_per_1m_input_tokens_uses_environment_override(monkeypatch) -> None:
