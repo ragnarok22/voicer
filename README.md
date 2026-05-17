@@ -33,7 +33,7 @@ OPENAI_TTS_USD_PER_1M_TOKENS=your_current_price_per_1m_input_tokens
 uv run --env-file .env voicer "Hello from voicer"
 ```
 
-By default, this uses the `alloy` voice, the `gpt-4o-mini-tts` model, and writes an MP3 to `outputs/`.
+By default, this uses the `marin` voice, the `gpt-4o-mini-tts` model, and writes an MP3 to `outputs/`.
 
 ## Input Methods
 
@@ -80,8 +80,8 @@ uv run --env-file .env voicer --voice marin "Hola a todos"
 Use multiple voices:
 
 ```sh
-uv run --env-file .env voicer --voice alloy --voice echo "Compare these voices"
-uv run --env-file .env voicer --voice alloy,echo,marin "Compare these voices"
+uv run --env-file .env voicer --voice marin --voice echo "Compare these voices"
+uv run --env-file .env voicer --voice marin,echo,alloy "Compare these voices"
 ```
 
 Generate every supported voice:
@@ -141,7 +141,7 @@ You can also set `OPENAI_TTS_MODEL` in `.env`.
 Preview token usage and cost without calling OpenAI:
 
 ```sh
-uv run voicer --dry-run --voice alloy,echo "Estimate this first"
+uv run voicer --dry-run --voice marin,echo "Estimate this first"
 ```
 
 If `OPENAI_TTS_USD_PER_1M_TOKENS` is set, `--dry-run` and generation summaries include an estimated input-token cost.
@@ -159,7 +159,7 @@ usage: voicer [-h] [-f INPUT_FILE] [--stdin] [-v VOICE_SELECTIONS]
 Common flags:
 
 ```text
---voice, -v       Voice name, number, comma-list, or all. Repeatable. Default: alloy.
+--voice, -v       Voice name, number, comma-list, or all. Repeatable. Default: marin.
 --file, -f        Read text from a UTF-8 file.
 --stdin           Read text from stdin explicitly.
 --output-dir      Directory for generated files. Default: outputs.

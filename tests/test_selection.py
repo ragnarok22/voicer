@@ -6,7 +6,7 @@ from main import VOICES, select_voices
 @pytest.mark.parametrize(
     ("raw_selection", "expected"),
     [
-        ("", ["alloy"]),
+        ("", ["marin"]),
         ("all", list(VOICES)),
         ("1, echo, 1, ALLOY", ["alloy", "echo"]),
         (" 2 , shimmer ", ["ash", "shimmer"]),

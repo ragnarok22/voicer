@@ -26,7 +26,7 @@ VOICES = (
 )
 DEFAULT_MODEL = "gpt-4o-mini-tts"
 OUTPUT_DIR = Path("outputs")
-DEFAULT_VOICE = "alloy"
+DEFAULT_VOICE = "marin"
 DEFAULT_RESPONSE_FORMAT = "mp3"
 RESPONSE_FORMATS = ("mp3", "opus", "aac", "flac", "wav", "pcm")
 
