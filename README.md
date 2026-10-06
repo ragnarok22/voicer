@@ -235,6 +235,85 @@ The tokenizer may download its encoding data on first use. `--dry-run` never
 sends your text to OpenAI or requires an API key; `--list-voices` needs neither
 tokenization nor API access.
 
+## Shell Completion
+
+Generate native tab completion for Bash, Zsh, or Fish with
+`voicer --completion <shell>`. This requires no API key or network access.
+Completion covers flags, voice names and numbers (including comma-separated
+selections), formats, known model names, shell names, and file/directory paths.
+Model names remain open-ended; voice suggestions include the full catalog,
+and model compatibility is checked when you run the command.
+
+The scripts register completion for the `voicer` command. In this checkout,
+activate the virtual environment to put that command on your shell's PATH:
+
+```sh
+source .venv/bin/activate       # Bash or Zsh
+```
+
+For Fish, use `source .venv/bin/activate.fish`. Generate scripts with
+`uv run voicer` as shown below, or use `voicer` directly when it is on your PATH.
+Completion is for `voicer …`, rather than `uv run voicer …`.
+
+### Bash
+
+Activate for the current session:
+
+```bash
+source <(uv run voicer --completion bash)
+```
+
+For persistent setup, save the script:
+
+```bash
+mkdir -p ~/.config/voicer
+uv run voicer --completion bash > ~/.config/voicer/voicer.bash
+```
+
+Add `source ~/.config/voicer/voicer.bash` to `~/.bashrc` (or the startup file
+your interactive Bash uses, such as `~/.bash_profile` on macOS).
+
+### Zsh
+
+Activate for the current session after initializing Zsh completion:
+
+```zsh
+autoload -Uz compinit
+compinit
+source <(uv run voicer --completion zsh)
+```
+
+For persistent setup, save the script:
+
+```zsh
+mkdir -p ~/.config/voicer
+uv run voicer --completion zsh > ~/.config/voicer/voicer.zsh
+```
+
+Add `source ~/.config/voicer/voicer.zsh` to `~/.zshrc` after your existing
+`compinit` call or shell framework initialization. If completion is not already
+initialized, add `autoload -Uz compinit` and `compinit` before the source line.
+You can also install the generated script as `_voicer` in a directory on `fpath`
+before running `compinit`.
+
+### Fish
+
+Activate for the current session:
+
+```fish
+uv run voicer --completion fish | source
+```
+
+For persistent setup, save the script in Fish's auto-loaded completion directory:
+
+```fish
+mkdir -p ~/.config/fish/completions
+uv run voicer --completion fish > ~/.config/fish/completions/voicer.fish
+source ~/.config/fish/completions/voicer.fish
+```
+
+Regenerate saved scripts after upgrading `voicer` to pick up new flags and choices.
+
 ## CLI Reference
 
 ```text
@@ -242,7 +321,8 @@ usage: voicer [-h] [-f INPUT_FILE] [--stdin] [-v VOICE_SELECTIONS]
               [--list-voices] [-m MODEL] [--instructions INSTRUCTIONS]
               [--speed SPEED] [--timeout TIMEOUT] [--max-retries MAX_RETRIES]
               [--format {mp3,opus,aac,flac,wav,pcm}] [-o OUTPUT_FILE]
-              [--output-dir OUTPUT_DIR] [--force] [--dry-run] [--version]
+              [--output-dir OUTPUT_DIR] [--force] [--dry-run]
+              [--completion {bash,zsh,fish}] [--version]
               [text]
 ```
 
@@ -263,6 +343,7 @@ Common flags:
 --max-retries     Non-negative SDK retry count. Default: 2.
 --dry-run         Print token and cost estimates without calling OpenAI.
 --list-voices     Print supported voices for the selected model and exit.
+--completion      Print a Bash, Zsh, or Fish completion script and exit.
 --version         Print the installed version.
 ```
 
@@ -284,6 +365,7 @@ voicer/
 ├── __init__.py           # Package definition
 ├── __main__.py           # python -m voicer entry point
 ├── cli.py                # Argument parsing, option validation, and orchestration
+├── completion.py         # Native Bash, Zsh, and Fish completion generators
 ├── config.py             # Defaults, voice catalog, formats, types, and limits
 ├── models.py             # Shared model-family detection
 ├── voices.py             # Voice selection and model compatibility
@@ -317,6 +399,8 @@ Use `make test TEST_ARGS="tests/test_audio.py -q"` for a focused run. Coverage
 checks enforce a 90% minimum for the `voicer` package, including branches. Tests use the
 real OpenAI SDK with mocked HTTPX2 transport and block socket connections;
 they require no credentials or paid API calls.
+Shell integration tests run when Bash, Zsh, or Fish is installed, and skip the
+corresponding checks when a shell is unavailable. CI installs all three shells.
 
 ## Continuous Integration
 
