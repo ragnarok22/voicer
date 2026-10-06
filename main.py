@@ -12,7 +12,6 @@ import openai
 import tiktoken
 from openai import OpenAI
 
-
 VOICES = (
     "alloy",
     "ash",
