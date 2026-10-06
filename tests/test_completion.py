@@ -186,6 +186,21 @@ def test_zsh_interactive_completion(
     assert not result.stderr
 
 
+def test_zsh_completion_with_insecure_inherited_fpath(
+    monkeypatch, completion_files, tmp_path
+):
+    # CI runners can inherit completion directories that trigger compinit's prompt.
+    insecure = tmp_path / "insecure-completions"
+    insecure.mkdir(mode=0o777)
+    insecure.chmod(0o777)
+    defaults = run_shell("zsh", "print -r -- ${(j.:.)fpath}", tmp_path).stdout.strip()
+    monkeypatch.setenv("FPATH", f"{insecure}:{defaults}")
+
+    test_zsh_interactive_completion(
+        "voicer --voice ma", "voicer --voice marin ", False, completion_files, tmp_path
+    )
+
+
 @pytest.mark.parametrize(
     ("line", "expected"),
     [
