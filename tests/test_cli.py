@@ -1,4 +1,5 @@
 from io import StringIO
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -46,7 +47,7 @@ def test_generate_audio_files_refuses_existing_output_without_force(tmp_path) ->
 
     with pytest.raises(SystemExit) as exc_info:
         main.generate_audio_files(
-            client=object(),
+            client=MagicMock(spec=main.OpenAI),
             voices=["alloy"],
             text="Hello world",
             model="gpt-4o-mini-tts",

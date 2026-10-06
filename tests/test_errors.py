@@ -1,4 +1,6 @@
-import httpx
+from unittest.mock import MagicMock
+
+import httpx2 as httpx
 import openai
 import pytest
 
@@ -36,7 +38,7 @@ def test_format_openai_error_explains_insufficient_quota() -> None:
 
 def test_generate_audio_files_exits_cleanly_on_rate_limit(tmp_path) -> None:
     class Speech:
-        def create(self, **kwargs):  # noqa: ANN003
+        def create(self, **kwargs):
             raise rate_limit_error()
 
     class Client:
@@ -52,7 +54,7 @@ def test_generate_audio_files_exits_cleanly_on_rate_limit(tmp_path) -> None:
 
     with pytest.raises(SystemExit) as exc_info:
         generate_audio_files(
-            client=Client(),
+            client=MagicMock(spec=openai.OpenAI, wraps=Client()),
             voices=["alloy"],
             text="Hello world",
             model="gpt-4o-mini-tts",
@@ -67,14 +69,14 @@ def test_generate_audio_files_prints_progress_before_request(tmp_path, capsys) -
         def __enter__(self):
             return self
 
-        def __exit__(self, exc_type, exc_value, traceback):  # noqa: ANN001
+        def __exit__(self, exc_type, exc_value, traceback):
             return False
 
-        def stream_to_file(self, output_path):  # noqa: ANN001
+        def stream_to_file(self, output_path):
             output_path.write_bytes(b"audio")
 
     class Speech:
-        def create(self, **kwargs):  # noqa: ANN003
+        def create(self, **kwargs):
             return Response()
 
     class Client:
@@ -89,7 +91,7 @@ def test_generate_audio_files_prints_progress_before_request(tmp_path, capsys) -
         )()
 
     generate_audio_files(
-        client=Client(),
+        client=MagicMock(spec=openai.OpenAI, wraps=Client()),
         voices=["alloy"],
         text="Hello world",
         model="gpt-4o-mini-tts",

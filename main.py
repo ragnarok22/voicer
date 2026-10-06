@@ -1,15 +1,16 @@
 import argparse
-from datetime import datetime
+from collections.abc import Sequence
 import os
-from pathlib import Path
 import re
 import sys
+from datetime import datetime
+from pathlib import Path
 from time import perf_counter
-from typing import Sequence, TextIO
+from typing import Literal, TextIO
 
 import openai
-from openai import OpenAI
 import tiktoken
+from openai import OpenAI
 
 
 VOICES = (
@@ -27,7 +28,8 @@ VOICES = (
 DEFAULT_MODEL = "gpt-4o-mini-tts"
 OUTPUT_DIR = Path("outputs")
 DEFAULT_VOICE = "marin"
-DEFAULT_RESPONSE_FORMAT = "mp3"
+type ResponseFormat = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
+DEFAULT_RESPONSE_FORMAT: ResponseFormat = "mp3"
 RESPONSE_FORMATS = ("mp3", "opus", "aac", "flac", "wav", "pcm")
 
 
@@ -204,12 +206,12 @@ def generate_audio_files(
     text: str,
     model: str,
     output_dir: Path,
-    response_format: str = DEFAULT_RESPONSE_FORMAT,
+    response_format: ResponseFormat = DEFAULT_RESPONSE_FORMAT,
     output_file: Path | None = None,
     overwrite: bool = False,
     timestamp: str | None = None,
 ) -> list[Path]:
-    timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
+    timestamp = timestamp or datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     generated_files: list[Path] = []
 
     if output_file is not None and len(voices) != 1:
@@ -417,7 +419,7 @@ def run(args: argparse.Namespace) -> None:
         print_estimate(text=text, voices=voices, model=args.model)
         return
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     input_tokens = count_input_tokens(text, args.model)
     token_price = usd_per_1m_input_tokens(args.model)
 
