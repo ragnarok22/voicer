@@ -48,9 +48,10 @@ uv run --env-file .env voicer "Hello from voicer"
 
 By default, this uses the `marin` voice, the `gpt-4o-mini-tts` model, and writes an MP3 to `outputs/`.
 
-**Recommended:** use `gpt-4o-mini-tts` for new projects. OpenAI recommends it as
-its newest and most reliable text-to-speech model, with instruction-based control
-over tone, accent, and emotion. Use `marin` or `cedar` for the best voice quality.
+**Recommended for this CLI's Speech API workflow:** use `gpt-4o-mini-tts` for
+text-to-file generation, with instruction-based control over tone, accent, and
+emotion. Use `marin` or `cedar` for the best voice quality. This recommendation
+is specific to `/audio/speech`, rather than OpenAI's voice models in general.
 
 ## Input Methods
 
@@ -165,7 +166,7 @@ uv run --env-file .env voicer --format wav "Save this as WAV"
 
 Supported formats are `mp3`, `opus`, `aac`, `flac`, `wav`, and `pcm`.
 
-### Recommended Model
+### Recommended Model For The Speech API
 
 Use **`gpt-4o-mini-tts`** for general speech generation and expressive narration.
 It is the CLI default and supports all built-in voices and `--instructions`:
@@ -184,6 +185,13 @@ default version, or pin the snapshot for consistent model behavior across runs:
 ```sh
 uv run --env-file .env voicer --model gpt-4o-mini-tts-2025-12-15 "Hello"
 ```
+
+The snapshot date is December 2025; the alias does not imply a newer model
+generation. OpenAI also offers [GPT-Live 1](https://developers.openai.com/api/docs/models/gpt-live-1)
+and [GPT-Realtime-2.1](https://developers.openai.com/api/docs/models/gpt-realtime-2.1)
+for conversational audio. They use the Live and Realtime APIs respectively and
+do not support `/audio/speech`. Using them with `voicer` would require a new
+backend integration, rather than selecting them with `--model`.
 
 `tts-1` and `tts-1-hd` are older alternatives with fewer voices and no support
 for `--instructions`. Choose them when you specifically need their behavior;
