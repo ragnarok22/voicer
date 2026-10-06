@@ -25,3 +25,26 @@ def test_read_text_exits_when_no_text_is_provided(monkeypatch) -> None:
         read_text()
 
     assert str(exc_info.value) == "No text provided."
+
+
+def test_read_text_accepts_eof_after_text(monkeypatch) -> None:
+    calls = 0
+
+    def read_line():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "Hello"
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", read_line)
+    assert read_text() == "Hello"
+
+
+def test_read_text_empty_eof_is_a_cli_error(monkeypatch) -> None:
+    def read_line():
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", read_line)
+    with pytest.raises(SystemExit, match="No text provided"):
+        read_text()

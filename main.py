@@ -27,6 +27,12 @@ VOICES = (
     "verse",
     "marin",
     "cedar",
+    "fable",
+    "nova",
+    "onyx",
+)
+LEGACY_VOICES = frozenset(
+    ("alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer")
 )
 DEFAULT_MODEL = "gpt-4o-mini-tts"
 OUTPUT_DIR = Path("outputs")
@@ -34,6 +40,8 @@ DEFAULT_VOICE = "marin"
 type ResponseFormat = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
 DEFAULT_RESPONSE_FORMAT: ResponseFormat = "mp3"
 RESPONSE_FORMATS = ("mp3", "opus", "aac", "flac", "wav", "pcm")
+MAX_INPUT_CHARACTERS = 4096
+MINI_MAX_INPUT_TOKENS = 2000
 
 
 class CliError(ValueError):
@@ -492,19 +500,41 @@ def build_parser() -> argparse.ArgumentParser:
         dest="voice_selections",
         help=(
             "Voice name, number, comma-list, or 'all'. Repeat the flag for multiple voices. "
-            f"Default: {DEFAULT_VOICE}."
+            f"Default: {DEFAULT_VOICE} (alloy for tts-1/tts-1-hd)."
         ),
     )
     parser.add_argument(
         "--list-voices",
         action="store_true",
-        help="Print available voices and exit.",
+        help="Print voices available for the selected model and exit.",
     )
     parser.add_argument(
         "-m",
         "--model",
         default=os.environ.get("OPENAI_TTS_MODEL", DEFAULT_MODEL),
         help="OpenAI TTS model. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--instructions",
+        help="Voice style instructions. Not supported by tts-1 or tts-1-hd.",
+    )
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="Speech speed from 0.25 to 4.0. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=600.0,
+        help="Request timeout in seconds (positive). Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=2,
+        help="SDK retries before streaming starts (non-negative). Default: %(default)s.",
     )
     parser.add_argument(
         "--format",
@@ -544,25 +574,79 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def resolve_voices(selections: list[str] | None) -> list[str]:
+def available_voices(model: str) -> tuple[str, ...]:
+    if _uses_character_billing(model):
+        return tuple(voice for voice in VOICES if voice in LEGACY_VOICES)
+    return VOICES
+
+
+def resolve_voices(
+    selections: list[str] | None, model: str = DEFAULT_MODEL
+) -> list[str]:
     if not selections:
-        return [DEFAULT_VOICE]
+        return ["alloy" if _uses_character_billing(model) else DEFAULT_VOICE]
 
     voices: list[str] = []
     for selection in selections:
-        voices.extend(parse_voice_selection(selection, default=None))
+        if selection.strip().lower() == "all":
+            voices.extend(available_voices(model))
+        else:
+            voices.extend(parse_voice_selection(selection, default=None))
 
-    return list(dict.fromkeys(voices))
+    voices = list(dict.fromkeys(voices))
+    unsupported = [voice for voice in voices if voice not in available_voices(model)]
+    if unsupported:
+        raise CliError(f"Voices not supported by {model}: {', '.join(unsupported)}.")
+    return voices
+
+
+def validate_options(args: argparse.Namespace) -> None:
+    args.model = args.model.strip()
+    if not args.model:
+        raise SystemExit("--model must not be empty.")
+    if not isfinite(args.speed) or not 0.25 <= args.speed <= 4.0:
+        raise SystemExit("--speed must be finite and between 0.25 and 4.0.")
+    if not isfinite(args.timeout) or args.timeout <= 0:
+        raise SystemExit("--timeout must be finite and positive.")
+    if args.max_retries < 0:
+        raise SystemExit("--max-retries must be non-negative.")
+    if args.instructions is not None:
+        args.instructions = args.instructions.strip()
+        if not args.instructions:
+            raise SystemExit("--instructions must not be empty.")
+        if _uses_character_billing(args.model):
+            raise SystemExit(f"--instructions is not supported by {args.model}.")
+
+
+def validate_text(text: str, model: str, instructions: str | None = None) -> int:
+    if len(text) > MAX_INPUT_CHARACTERS:
+        raise SystemExit(
+            f"Speech input exceeds {MAX_INPUT_CHARACTERS} characters. "
+            "Provide a shorter text."
+        )
+    input_tokens = count_input_tokens(text, model)
+    if instructions:
+        input_tokens += count_input_tokens(instructions, model)
+    if (model == DEFAULT_MODEL or model.startswith(f"{DEFAULT_MODEL}-")) and (
+        input_tokens > MINI_MAX_INPUT_TOKENS
+    ):
+        raise SystemExit(
+            f"Input exceeds the estimated {MINI_MAX_INPUT_TOKENS} input tokens for {model} "
+            "(including instructions). Provide shorter text or instructions."
+        )
+    return input_tokens
 
 
 def run(args: argparse.Namespace) -> None:
+    validate_options(args)
     if args.list_voices:
         for index, voice in enumerate(VOICES, start=1):
-            print(f"{index:>2}. {voice}")
+            if voice in available_voices(args.model):
+                print(f"{index:>2}. {voice}")
         return
 
     try:
-        voices = resolve_voices(args.voice_selections)
+        voices = resolve_voices(args.voice_selections, args.model)
     except CliError as error:
         raise SystemExit(str(error)) from error
 
@@ -575,28 +659,32 @@ def run(args: argparse.Namespace) -> None:
     text = resolve_text(
         text=args.text, input_file=args.input_file, use_stdin=args.stdin
     )
+    input_tokens = validate_text(text, args.model, args.instructions)
 
     if args.dry_run:
-        print_estimate(text=text, voices=voices, model=args.model)
+        print_estimate(
+            text=text, voices=voices, model=args.model, instructions=args.instructions
+        )
         return
 
     timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
-    input_tokens = count_input_tokens(text, args.model)
     token_price = usd_per_1m_input_tokens(args.model)
 
-    client = OpenAI()
     total_start = perf_counter()
-    generated_files = generate_audio_files(
-        client=client,
-        voices=voices,
-        text=text,
-        model=args.model,
-        output_dir=args.output_dir,
-        response_format=args.response_format,
-        output_file=args.output_file,
-        overwrite=args.force,
-        timestamp=timestamp,
-    )
+    with OpenAI(timeout=args.timeout, max_retries=args.max_retries) as client:
+        generated_files = generate_audio_files(
+            client=client,
+            voices=voices,
+            text=text,
+            model=args.model,
+            output_dir=args.output_dir,
+            response_format=args.response_format,
+            output_file=args.output_file,
+            overwrite=args.force,
+            timestamp=timestamp,
+            instructions=args.instructions,
+            speed=args.speed,
+        )
 
     total_elapsed = perf_counter() - total_start
     print_summary(
@@ -605,6 +693,7 @@ def run(args: argparse.Namespace) -> None:
         voices=voices,
         token_price=token_price,
         total_elapsed=total_elapsed,
+        model=args.model,
     )
 
 
@@ -615,7 +704,10 @@ def main(argv: Sequence[str] = ()) -> None:
 
 
 def cli() -> None:
-    main(sys.argv[1:])
+    try:
+        main(sys.argv[1:])
+    except KeyboardInterrupt:
+        raise SystemExit("Generation cancelled.") from None
 
 
 if __name__ == "__main__":
