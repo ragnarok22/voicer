@@ -36,6 +36,34 @@ def test_format_openai_error_explains_insufficient_quota() -> None:
     assert "insufficient_quota" in message
 
 
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize("field", ["code", "type"])
+def test_sdk_quota_error_body_shapes(nested, field) -> None:
+    error = rate_limit_error()
+    body = {field: "insufficient_quota"}
+    error.body = {"error": body} if nested else body
+    assert "OpenAI quota exceeded" in format_openai_error(error)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [None, "secret-key", [], {"error": None}, {"error": []}, {"error": 3}],
+)
+def test_format_openai_error_handles_malformed_body_without_secrets(body) -> None:
+    error = rate_limit_error()
+    error.body = body
+    message = format_openai_error(error)
+    assert "rate limit" in message.lower()
+    assert "secret-key" not in message
+
+
+def test_format_openai_error_omits_unsafe_request_id() -> None:
+    error = rate_limit_error()
+    error.request_id = "req_test\nAuthorization: Bearer secret-key"
+    assert "secret-key" not in format_openai_error(error)
+    assert "Authorization" not in format_openai_error(error)
+
+
 def test_generate_audio_files_exits_cleanly_on_rate_limit(tmp_path) -> None:
     class Speech:
         def create(self, **kwargs):

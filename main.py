@@ -1,13 +1,17 @@
 import argparse
 import os
 import re
+import stat
 import sys
+import tempfile
 from collections.abc import Sequence
 from datetime import datetime
+from math import isfinite
 from pathlib import Path
 from time import perf_counter
 from typing import Literal, TextIO
 
+import httpx2
 import openai
 import tiktoken
 from openai import OpenAI
@@ -166,36 +170,115 @@ def count_input_tokens(text: str, model: str) -> int:
     return len(encoding.encode(text))
 
 
+def _uses_character_billing(model: str) -> bool:
+    return (
+        re.fullmatch(r"tts-1(?:-hd)?(?:-[0-9]{4}(?:-[0-9]{2}-[0-9]{2})?)?", model)
+        is not None
+    )
+
+
 def usd_per_1m_input_tokens(model: str) -> float | None:
+    if _uses_character_billing(model):
+        return None
+
     raw_price = os.environ.get("OPENAI_TTS_USD_PER_1M_TOKENS")
     if raw_price is None:
         return None
 
     try:
-        return float(raw_price)
+        price = float(raw_price)
     except ValueError:
         raise SystemExit("OPENAI_TTS_USD_PER_1M_TOKENS must be a number.") from None
+
+    if not isfinite(price) or price < 0:
+        raise SystemExit(
+            "OPENAI_TTS_USD_PER_1M_TOKENS must be finite and non-negative."
+        )
+    return price
 
 
 def format_seconds(seconds: float) -> str:
     return f"{seconds:.2f}s"
 
 
-def format_openai_error(error: openai.OpenAIError) -> str:
+def format_openai_error(
+    error: openai.OpenAIError | httpx2.RequestError,
+    *,
+    request_id: str | None = None,
+) -> str:
     body = getattr(error, "body", None)
-    error_body = body.get("error", {}) if isinstance(body, dict) else {}
-    error_code = error_body.get("code")
-    error_type = error_body.get("type")
-
-    if isinstance(error, openai.RateLimitError) and (
-        error_code == "insufficient_quota" or error_type == "insufficient_quota"
-    ):
-        return (
-            "OpenAI quota exceeded. Check your plan and billing details. "
-            f"OpenAI error code/type: {error_code or error_type}."
+    error_body = body if isinstance(body, dict) else {}
+    if isinstance(error_body.get("error"), dict):
+        error_body = error_body["error"]
+    status = getattr(error, "status_code", None)
+    quota = any(
+        value == "insufficient_quota"
+        for value in (
+            error_body.get("code"),
+            error_body.get("type"),
+            getattr(error, "code", None),
+            getattr(error, "type", None),
         )
+    )
 
-    return f"OpenAI request failed: {error}"
+    if status == 429 and quota:
+        message = (
+            "OpenAI quota exceeded. Check your plan and billing details. "
+            "OpenAI error code/type: insufficient_quota."
+        )
+    elif isinstance(error, (openai.APITimeoutError, httpx2.TimeoutException)):
+        message = "OpenAI request or audio download timed out. Try again."
+    elif isinstance(error, (openai.APIConnectionError, httpx2.RequestError)):
+        message = (
+            "OpenAI connection or audio stream failed. "
+            "Check your network connection and try again."
+        )
+    elif status == 401:
+        message = "OpenAI authentication failed. Check OPENAI_API_KEY."
+    elif status == 403:
+        message = "OpenAI permission denied. Check project and model access."
+    elif status == 429:
+        message = "OpenAI rate limit exceeded. Wait before trying again."
+    elif status in (400, 422):
+        kind = "bad request" if status == 400 else "invalid request"
+        message = (
+            f"OpenAI {kind}. Check the text length, model, voice, audio format, "
+            "instructions and speed."
+        )
+    elif isinstance(status, int) and status >= 500:
+        message = f"OpenAI server error (HTTP {status}). Try again later."
+    elif isinstance(status, int):
+        message = f"OpenAI request failed (HTTP {status}). Check request settings."
+    else:
+        message = "OpenAI request failed. Check request settings and try again."
+
+    # SDK messages/bodies can echo credentials or input; report only safe metadata.
+    request_id = getattr(error, "request_id", None) or request_id
+    if isinstance(request_id, str) and re.fullmatch(
+        r"[A-Za-z0-9_-]{1,128}", request_id
+    ):
+        message += f" Request ID: {request_id}."
+    return message
+
+
+def _output_exists_error(output_path: Path) -> SystemExit:
+    return SystemExit(
+        f"Output file already exists: {output_path}. Use --force to replace it."
+    )
+
+
+def _cleanup_audio_temporaries(temporary_paths: list[Path]) -> None:
+    failure: tuple[Path, OSError] | None = None
+    for path in temporary_paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            failure = (path, error)
+    if failure is not None:
+        path, error = failure
+        raise SystemExit(
+            f"Could not remove temporary output file {path}: {error.strerror or error}"
+        ) from error
 
 
 def generate_audio_files(
@@ -209,6 +292,8 @@ def generate_audio_files(
     output_file: Path | None = None,
     overwrite: bool = False,
     timestamp: str | None = None,
+    instructions: str | None = None,
+    speed: float = 1.0,
 ) -> list[Path]:
     timestamp = timestamp or datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     generated_files: list[Path] = []
@@ -216,21 +301,47 @@ def generate_audio_files(
     if output_file is not None and len(voices) != 1:
         raise SystemExit("--output can only be used with one voice.")
 
-    if output_file is None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-    elif output_file.parent != Path("."):
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-
+    output_paths = [
+        output_file
+        or output_dir / (f"{filename_base(text)}-{voice}-{timestamp}.{response_format}")
+        for voice in voices
+    ]
+    if len(set(output_paths)) != len(output_paths):
+        raise SystemExit("Multiple voices resolve to the same output file.")
+    temporary_paths: list[Path] = []
+    output_path = output_file or output_dir
+    request_id: str | None = None
     try:
-        for voice in voices:
-            output_path = output_file or output_dir / (
-                f"{filename_base(text)}-{voice}-{timestamp}.{response_format}"
-            )
-            if output_path.exists() and not overwrite:
-                raise SystemExit(
-                    f"Output file already exists: {output_path}. Use --force to replace it."
-                )
+        # Check every destination and reserve writable same-directory staging files
+        # before making the first billable request.
+        for output_path in output_paths:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                mode = output_path.lstat().st_mode
+            except FileNotFoundError:
+                pass
+            else:
+                if not overwrite:
+                    raise _output_exists_error(output_path)
+                if not stat.S_ISREG(mode):
+                    raise SystemExit(
+                        f"Output path is not a regular file: {output_path}"
+                    )
+            with tempfile.NamedTemporaryFile(
+                dir=output_path.parent,
+                prefix=f".{output_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary_paths.append(Path(temporary.name))
 
+        for voice, output_path, temporary_path in zip(
+            voices,
+            output_paths,
+            temporary_paths,
+            strict=True,
+        ):
+            request_id = None
             file_start = perf_counter()
             print(f"Generating {voice} -> {output_path}...", flush=True)
             with client.audio.speech.with_streaming_response.create(
@@ -238,34 +349,79 @@ def generate_audio_files(
                 voice=voice,
                 input=text,
                 response_format=response_format,
+                instructions=instructions if instructions is not None else openai.omit,
+                speed=speed,
+                stream_format="audio",
             ) as response:
-                response.stream_to_file(output_path)
+                request_id = getattr(response, "headers", {}).get("x-request-id")
+                response.stream_to_file(temporary_path)
+            # Both the file writer and HTTP response must close successfully first.
+            if overwrite:
+                os.replace(temporary_path, output_path)
+            else:
+                try:
+                    os.link(temporary_path, output_path)
+                except FileExistsError:
+                    raise _output_exists_error(output_path) from None
+                temporary_path.unlink()
             generated_files.append(output_path)
             print(
                 f"Generated {output_path} in {format_seconds(perf_counter() - file_start)}"
             )
-    except openai.OpenAIError as error:
-        raise SystemExit(format_openai_error(error)) from error
+    except (openai.OpenAIError, httpx2.RequestError) as error:
+        raise SystemExit(format_openai_error(error, request_id=request_id)) from error
+    except OSError as error:
+        raise SystemExit(
+            f"Could not write output file {output_path}: {error.strerror or error}"
+        ) from error
+    finally:
+        _cleanup_audio_temporaries(temporary_paths)
 
     return generated_files
 
 
-def format_cost(total_input_tokens: int, token_price: float | None) -> list[str]:
+def format_cost(
+    total_input_tokens: int,
+    token_price: float | None,
+    *,
+    model: str = DEFAULT_MODEL,
+) -> list[str]:
+    disclaimer = "Excludes generated audio cost; this estimate is not a bill."
+    if _uses_character_billing(model):
+        return [
+            "Estimated text input cost: unavailable",
+            f"{model} uses character-based billing; no token price applies.",
+            disclaimer,
+        ]
     if token_price is None:
         return [
-            "Estimated cost: unavailable",
-            "Set OPENAI_TTS_USD_PER_1M_TOKENS to calculate it.",
+            "Estimated text input cost: unavailable",
+            "Set OPENAI_TTS_USD_PER_1M_TOKENS to estimate text input cost.",
+            disclaimer,
         ]
 
+    if not isfinite(token_price) or token_price < 0:
+        raise SystemExit(
+            "OPENAI_TTS_USD_PER_1M_TOKENS must be finite and non-negative."
+        )
     estimated_cost = total_input_tokens / 1_000_000 * token_price
     return [
-        f"Estimated cost: ${estimated_cost:.6f} USD",
-        f"Price used: ${token_price:g} USD per 1M input tokens",
+        f"Estimated text input cost: ${estimated_cost:.6f} USD",
+        f"Price used: ${token_price:g} USD per 1M text input tokens",
+        disclaimer,
     ]
 
 
-def print_estimate(*, text: str, voices: list[str], model: str) -> None:
+def print_estimate(
+    *,
+    text: str,
+    voices: list[str],
+    model: str,
+    instructions: str | None = None,
+) -> None:
     input_tokens = count_input_tokens(text, model)
+    if instructions:
+        input_tokens += count_input_tokens(instructions, model)
     total_input_tokens = input_tokens * len(voices)
     token_price = usd_per_1m_input_tokens(model)
 
@@ -276,7 +432,12 @@ def print_estimate(*, text: str, voices: list[str], model: str) -> None:
         "Estimated input tokens: "
         f"{total_input_tokens:,} ({input_tokens:,} per file x {len(voices)})"
     )
-    for line in format_cost(total_input_tokens, token_price):
+    if instructions:
+        print(
+            "Includes instruction tokens per file as a conservative estimate, "
+            "not exact billed usage."
+        )
+    for line in format_cost(total_input_tokens, token_price, model=model):
         print(line)
 
 
@@ -287,6 +448,7 @@ def print_summary(
     voices: list[str],
     token_price: float | None,
     total_elapsed: float,
+    model: str = DEFAULT_MODEL,
 ) -> None:
     total_input_tokens = input_tokens * len(voices)
 
@@ -296,7 +458,7 @@ def print_summary(
         "Estimated input tokens: "
         f"{total_input_tokens:,} ({input_tokens:,} per file x {len(voices)})"
     )
-    for line in format_cost(total_input_tokens, token_price):
+    for line in format_cost(total_input_tokens, token_price, model=model):
         print(line)
     print(f"Total time: {format_seconds(total_elapsed)}")
 

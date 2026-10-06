@@ -34,15 +34,17 @@ def test_format_seconds_uses_two_decimal_places(seconds: float, expected: str) -
 
 def test_format_cost_is_unavailable_without_configured_price() -> None:
     assert format_cost(1000, None) == [
-        "Estimated cost: unavailable",
-        "Set OPENAI_TTS_USD_PER_1M_TOKENS to calculate it.",
+        "Estimated text input cost: unavailable",
+        "Set OPENAI_TTS_USD_PER_1M_TOKENS to estimate text input cost.",
+        "Excludes generated audio cost; this estimate is not a bill.",
     ]
 
 
 def test_format_cost_calculates_from_configured_price() -> None:
     assert format_cost(2500, 2.0) == [
-        "Estimated cost: $0.005000 USD",
-        "Price used: $2 USD per 1M input tokens",
+        "Estimated text input cost: $0.005000 USD",
+        "Price used: $2 USD per 1M text input tokens",
+        "Excludes generated audio cost; this estimate is not a bill.",
     ]
 
 

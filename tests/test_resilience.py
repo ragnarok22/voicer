@@ -23,21 +23,23 @@ def test_failed_download_preserves_destination(tmp_path: Path, existing: bool) -
     def handler(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(200, stream=BrokenAudio(), request=request)
 
-    with openai.OpenAI(
-        api_key="test-key",
-        http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
-        max_retries=0,
-    ) as client:
-        with pytest.raises(SystemExit, match="(?i)(stream|connection|download)"):
-            main.generate_audio_files(
-                client=client,
-                voices=["marin"],
-                text="Hello",
-                model=main.DEFAULT_MODEL,
-                output_dir=tmp_path,
-                output_file=output,
-                overwrite=existing,
-            )
+    with (
+        openai.OpenAI(
+            api_key="test-key",
+            http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
+            max_retries=0,
+        ) as client,
+        pytest.raises(SystemExit, match="(?i)(stream|connection|download)"),
+    ):
+        main.generate_audio_files(
+            client=client,
+            voices=["marin"],
+            text="Hello",
+            model=main.DEFAULT_MODEL,
+            output_dir=tmp_path,
+            output_file=output,
+            overwrite=existing,
+        )
 
     if existing:
         assert output.read_bytes() == b"original audio"
@@ -54,19 +56,21 @@ def test_sdk_quota_error_is_recognized(tmp_path: Path) -> None:
             json={"error": {"code": "insufficient_quota", "message": "Quota exceeded"}},
         )
 
-    with openai.OpenAI(
-        api_key="test-key",
-        http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
-        max_retries=0,
-    ) as client:
-        with pytest.raises(SystemExit, match="OpenAI quota exceeded"):
-            main.generate_audio_files(
-                client=client,
-                voices=["marin"],
-                text="Hello",
-                model=main.DEFAULT_MODEL,
-                output_dir=tmp_path,
-            )
+    with (
+        openai.OpenAI(
+            api_key="test-key",
+            http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
+            max_retries=0,
+        ) as client,
+        pytest.raises(SystemExit, match="OpenAI quota exceeded"),
+    ):
+        main.generate_audio_files(
+            client=client,
+            voices=["marin"],
+            text="Hello",
+            model=main.DEFAULT_MODEL,
+            output_dir=tmp_path,
+        )
 
 
 @pytest.mark.parametrize("price", ["-1", "nan", "inf", "-inf"])
