@@ -156,13 +156,22 @@ def test_bash_completions(words, expected, completion_files, tmp_path):
 def test_zsh_interactive_completion(
     line, expected, autoload, completion_files, tmp_path
 ):
+    assert_zsh_interactive_completion(
+        line, expected, autoload, completion_files, tmp_path
+    )
+
+
+def assert_zsh_interactive_completion(
+    line, expected, autoload, completion_files, tmp_path
+):
     # Exercise the real completion widgets, including loading through fpath.
     if autoload:
         load = f"fpath=({shlex.quote(str(tmp_path))} $fpath); autoload -Uz _voicer; compdef _voicer voicer"
     else:
         load = f"source {shlex.quote(str(completion_files['zsh']))}"
+    # Ignore insecure inherited completion directories without prompting.
     setup = (
-        "PROMPT=''; RPROMPT=''; autoload -Uz compinit; compinit -D; "
+        "PROMPT=''; RPROMPT=''; autoload -Uz compinit; compinit -i -D; "
         f"{load}; "
         "zle -C _voicer_test complete-word _main_complete; "
         "_voicer_capture() { zle _voicer_test; "
@@ -186,8 +195,9 @@ def test_zsh_interactive_completion(
     assert not result.stderr
 
 
+@pytest.mark.parametrize("autoload", [False, True])
 def test_zsh_completion_with_insecure_inherited_fpath(
-    monkeypatch, completion_files, tmp_path
+    autoload, monkeypatch, completion_files, tmp_path
 ):
     # CI runners can inherit completion directories that trigger compinit's prompt.
     insecure = tmp_path / "insecure-completions"
@@ -196,8 +206,12 @@ def test_zsh_completion_with_insecure_inherited_fpath(
     defaults = run_shell("zsh", "print -r -- ${(j.:.)fpath}", tmp_path).stdout.strip()
     monkeypatch.setenv("FPATH", f"{insecure}:{defaults}")
 
-    test_zsh_interactive_completion(
-        "voicer --voice ma", "voicer --voice marin ", False, completion_files, tmp_path
+    assert_zsh_interactive_completion(
+        "voicer --voice ma",
+        "voicer --voice marin ",
+        autoload,
+        completion_files,
+        tmp_path,
     )
 
 
