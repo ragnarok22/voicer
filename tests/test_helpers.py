@@ -46,7 +46,9 @@ def test_format_cost_calculates_from_configured_price() -> None:
     ]
 
 
-def test_usd_per_1m_input_tokens_returns_none_without_price_override(monkeypatch) -> None:
+def test_usd_per_1m_input_tokens_returns_none_without_price_override(
+    monkeypatch,
+) -> None:
     monkeypatch.delenv("OPENAI_TTS_USD_PER_1M_TOKENS", raising=False)
 
     assert usd_per_1m_input_tokens("gpt-4o-mini-tts") is None

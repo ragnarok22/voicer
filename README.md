@@ -180,14 +180,12 @@ uv run voicer --help
 
 ## Development
 
-Run tests:
+Use the Makefile to run development tools through `uv`:
 
 ```sh
-uv run pytest
-```
-
-Run lint checks:
-
-```sh
-uv run ruff check .
+make help       # List available commands (also the default for make)
+make format     # Format Python code with Ruff
+make lint       # Check Python code with Ruff
+make typecheck  # Check Python types with ty
+make test       # Run tests with pytest
 ```

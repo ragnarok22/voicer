@@ -43,7 +43,11 @@ def test_generate_audio_files_exits_cleanly_on_rate_limit(tmp_path) -> None:
         audio = type(
             "Audio",
             (),
-            {"speech": type("SpeechResponses", (), {"with_streaming_response": Speech()})()},
+            {
+                "speech": type(
+                    "SpeechResponses", (), {"with_streaming_response": Speech()}
+                )()
+            },
         )()
 
     with pytest.raises(SystemExit) as exc_info:
@@ -77,7 +81,11 @@ def test_generate_audio_files_prints_progress_before_request(tmp_path, capsys) -
         audio = type(
             "Audio",
             (),
-            {"speech": type("SpeechResponses", (), {"with_streaming_response": Speech()})()},
+            {
+                "speech": type(
+                    "SpeechResponses", (), {"with_streaming_response": Speech()}
+                )()
+            },
         )()
 
     generate_audio_files(

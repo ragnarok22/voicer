@@ -119,7 +119,9 @@ def read_input_file(path: Path) -> str:
     try:
         text = path.read_text(encoding="utf-8").strip()
     except OSError as error:
-        raise SystemExit(f"Could not read input file {path}: {error.strerror}") from error
+        raise SystemExit(
+            f"Could not read input file {path}: {error.strerror}"
+        ) from error
 
     if not text:
         raise SystemExit(f"Input file is empty: {path}")
@@ -130,7 +132,9 @@ def read_input_file(path: Path) -> str:
 def resolve_text(*, text: str | None, input_file: Path | None, use_stdin: bool) -> str:
     sources = sum(source is not None for source in (text, input_file)) + int(use_stdin)
     if sources > 1:
-        raise SystemExit("Provide text using only one source: argument, --file, or --stdin.")
+        raise SystemExit(
+            "Provide text using only one source: argument, --file, or --stdin."
+        )
 
     if text is not None:
         text = text.strip()
@@ -182,9 +186,8 @@ def format_openai_error(error: openai.OpenAIError) -> str:
     error_code = error_body.get("code")
     error_type = error_body.get("type")
 
-    if (
-        isinstance(error, openai.RateLimitError)
-        and (error_code == "insufficient_quota" or error_type == "insufficient_quota")
+    if isinstance(error, openai.RateLimitError) and (
+        error_code == "insufficient_quota" or error_type == "insufficient_quota"
     ):
         return (
             "OpenAI quota exceeded. Check your plan and billing details. "
@@ -406,7 +409,9 @@ def run(args: argparse.Namespace) -> None:
     if not args.dry_run and not os.environ.get("OPENAI_API_KEY"):
         raise SystemExit("Set OPENAI_API_KEY before running this script.")
 
-    text = resolve_text(text=args.text, input_file=args.input_file, use_stdin=args.stdin)
+    text = resolve_text(
+        text=args.text, input_file=args.input_file, use_stdin=args.stdin
+    )
 
     if args.dry_run:
         print_estimate(text=text, voices=voices, model=args.model)
