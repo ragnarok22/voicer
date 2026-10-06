@@ -183,9 +183,24 @@ uv run voicer --help
 Use the Makefile to run development tools through `uv`:
 
 ```sh
-make help       # List available commands (also the default for make)
-make format     # Format Python code with Ruff
-make lint       # Check Python code with Ruff
-make typecheck  # Check Python types with ty
-make test       # Run tests with pytest
+make help          # List available commands (also the default for make)
+make format        # Format Python code with Ruff
+make format-check  # Check formatting without changing files
+make lint          # Check Python code with Ruff
+make typecheck     # Check Python types with ty
+make test          # Run tests with pytest
+```
+
+## Continuous Integration
+
+GitHub Actions runs formatting, lint, type, and test checks in parallel on every
+push and pull request. The workflow can also be started manually from the Actions
+tab. It uses the Python version in `.python-version` and installs development
+dependencies from `uv.lock`, failing if the lockfile is out of date.
+
+Run the same checks locally:
+
+```sh
+uv sync --locked --group dev
+make format-check lint typecheck test
 ```
