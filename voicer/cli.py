@@ -126,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="voicer 0.1.0",
+        version="voicer 0.2.0",
     )
     return parser
 

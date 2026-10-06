@@ -11,7 +11,7 @@ import pytest
     ("arguments", "code", "expected"),
     [
         (["--help"], 0, "--instructions"),
-        (["--version"], 0, "voicer 0.1.0"),
+        (["--version"], 0, "voicer 0.2.0"),
         (["--list-voices"], 0, "13. onyx"),
         (["--list-voices", "--model", "tts-1"], 0, "11. fable"),
         (["--invalid-option"], 2, "unrecognized arguments"),
