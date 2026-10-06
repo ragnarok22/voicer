@@ -1,5 +1,11 @@
 # voicer
 
+[![CI](https://github.com/ragnarok22/voicer/actions/workflows/ci.yml/badge.svg)](https://github.com/ragnarok22/voicer/actions/workflows/ci.yml)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Managed with uv](https://img.shields.io/badge/managed_with-uv-DE5FE9?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
+[![Linting and formatting with Ruff](https://img.shields.io/badge/lint_%26_format-Ruff-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
+[![Type checked with ty](https://img.shields.io/badge/type_checked-ty-DE5FE9)](https://docs.astral.sh/ty/)
+
 Generate OpenAI text-to-speech audio from a small, practical CLI.
 
 `voicer` accepts text from an argument, file, stdin, or an interactive prompt, then writes audio files for one or more OpenAI voices.
