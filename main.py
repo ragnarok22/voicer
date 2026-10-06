@@ -53,7 +53,10 @@ def read_text() -> str:
     lines: list[str] = []
 
     while True:
-        line = input()
+        try:
+            line = input()
+        except EOFError:
+            break
         if not line:
             break
         lines.append(line)
@@ -131,6 +134,8 @@ def read_stdin(stdin: TextIO | None = None) -> str:
 def read_input_file(path: Path) -> str:
     try:
         text = path.read_text(encoding="utf-8").strip()
+    except UnicodeDecodeError:
+        raise SystemExit(f"Input file is not valid UTF-8: {path}") from None
     except OSError as error:
         raise SystemExit(
             f"Could not read input file {path}: {error.strerror}"
@@ -175,7 +180,7 @@ def count_input_tokens(text: str, model: str) -> int:
     except KeyError:
         encoding = tiktoken.get_encoding("o200k_base")
 
-    return len(encoding.encode(text))
+    return len(encoding.encode_ordinary(text))
 
 
 def _uses_character_billing(model: str) -> bool:

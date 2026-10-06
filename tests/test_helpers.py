@@ -4,6 +4,15 @@ import main
 from main import filename_base, format_cost, format_seconds, usd_per_1m_input_tokens
 
 
+@pytest.fixture(autouse=True)
+def offline_tokenizer_resources(monkeypatch) -> None:
+    def unexpected_resource_load(*args, **kwargs):
+        pytest.fail("Tokenizer tests must provide in-memory encoding resources")
+
+    monkeypatch.setattr(main.tiktoken, "encoding_for_model", unexpected_resource_load)
+    monkeypatch.setattr(main.tiktoken, "get_encoding", unexpected_resource_load)
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
@@ -73,7 +82,7 @@ def test_usd_per_1m_input_tokens_rejects_invalid_override(monkeypatch) -> None:
 
 def test_count_input_tokens_uses_model_encoding(monkeypatch) -> None:
     class Encoding:
-        def encode(self, text: str) -> list[str]:
+        def encode_ordinary(self, text: str) -> list[str]:
             return text.split()
 
     def encoding_for_model(model: str) -> Encoding:
@@ -87,7 +96,7 @@ def test_count_input_tokens_uses_model_encoding(monkeypatch) -> None:
 
 def test_count_input_tokens_falls_back_for_unknown_model(monkeypatch) -> None:
     class Encoding:
-        def encode(self, text: str) -> list[str]:
+        def encode_ordinary(self, text: str) -> list[str]:
             return list(text)
 
     def encoding_for_model(model: str) -> Encoding:
@@ -102,3 +111,36 @@ def test_count_input_tokens_falls_back_for_unknown_model(monkeypatch) -> None:
     monkeypatch.setattr(main.tiktoken, "get_encoding", get_encoding)
 
     assert main.count_input_tokens("abc", "unknown-model") == 3
+
+
+@pytest.mark.parametrize("model", ["known-model", "unknown-model"])
+@pytest.mark.parametrize(
+    "text",
+    ["<|endoftext|>", "Read <|endoftext|> aloud.", "Café <|endoftext|> 🙂"],
+)
+def test_count_input_tokens_treats_special_literals_as_ordinary_text(
+    monkeypatch, model: str, text: str
+) -> None:
+    # Real tiktoken behavior, with a fabricated byte vocabulary: no cache or downloads.
+    encoding = main.tiktoken.Encoding(
+        "test-byte-encoding",
+        pat_str=r"(?s:.)",
+        mergeable_ranks={bytes([byte]): byte for byte in range(256)},
+        special_tokens={"<|endoftext|>": 256},
+    )
+
+    def encoding_for_model(name: str):
+        assert name == model
+        if name == "unknown-model":
+            raise KeyError(name)
+        return encoding
+
+    def get_encoding(name: str):
+        assert name == "o200k_base"
+        assert model == "unknown-model"
+        return encoding
+
+    monkeypatch.setattr(main.tiktoken, "encoding_for_model", encoding_for_model)
+    monkeypatch.setattr(main.tiktoken, "get_encoding", get_encoding)
+
+    assert main.count_input_tokens(text, model) == len(text.encode("utf-8"))
