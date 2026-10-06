@@ -183,9 +183,38 @@ fi
 
 
 def _fish(actions: list[argparse.Action]) -> str:
+    value_options = " ".join(
+        option
+        for action in actions
+        if action.nargs != 0
+        for option in action.option_strings
+    )
     lines = [
         "# Fish completion for voicer. Source or install as voicer.fish.",
         "complete -c voicer -f",
+        "function _voicer_complete_option",
+        "    set -l words (commandline -opc)",
+        "    set -l pending ''",
+        "    for word in $words[2..-1]",
+        '        if test -n "$pending"',
+        "            set pending ''",
+        "            continue",
+        "        end",
+        "        switch $word",
+        "            case --",
+        "                return 1",
+        f"            case {value_options}",
+        "                set pending $word",
+        "        end",
+        "    end",
+        '    if test -n "$pending"',
+        "        set -l token (commandline -ct)",
+        "        string match -q -- '-*' \"$token\"; and return 1",
+        '        contains -- "$pending" $argv',
+        "        return $status",
+        "    end",
+        "    return 0",
+        "end",
         "function _voicer_complete_voices",
         "    set -l token (commandline -ct)",
         "    set -l prefix ''",
@@ -210,6 +239,9 @@ def _fish(actions: list[argparse.Action]) -> str:
             kind = "-l" if option.startswith("--") else "-s"
             parts.extend([kind, option.lstrip("-")])
         parts.extend(["-d", quote(_description(action))])
+        parts.extend(
+            ["-n", quote(f"_voicer_complete_option {' '.join(action.option_strings)}")]
+        )
         if action.nargs != 0:
             parts.append("-r")
             choices = _choices(action)
