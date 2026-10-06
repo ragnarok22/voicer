@@ -13,6 +13,7 @@ from openai import OpenAI
 
 from . import estimates
 from .audio import generate_audio_files
+from .completion import SHELLS, generate_completion
 from .config import (
     DEFAULT_MODEL,
     DEFAULT_RESPONSE_FORMAT,
@@ -124,6 +125,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print token and cost estimates without calling OpenAI.",
     )
     parser.add_argument(
+        "--completion",
+        choices=SHELLS,
+        help="Print a shell completion script and exit.",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="voicer 0.2.0",
@@ -212,6 +218,9 @@ def run(args: argparse.Namespace) -> None:
 def main(argv: Sequence[str] = ()) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.completion is not None:
+        print(generate_completion(parser, args.completion), end="")
+        return
     run(args)
 
 
