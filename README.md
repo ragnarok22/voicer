@@ -48,6 +48,10 @@ uv run --env-file .env voicer "Hello from voicer"
 
 By default, this uses the `marin` voice, the `gpt-4o-mini-tts` model, and writes an MP3 to `outputs/`.
 
+**Recommended:** use `gpt-4o-mini-tts` for new projects. OpenAI recommends it as
+its newest and most reliable text-to-speech model, with instruction-based control
+over tone, accent, and emotion. Use `marin` or `cedar` for the best voice quality.
+
 ## Input Methods
 
 Pass text directly:
@@ -161,19 +165,34 @@ uv run --env-file .env voicer --format wav "Save this as WAV"
 
 Supported formats are `mp3`, `opus`, `aac`, `flac`, `wav`, and `pcm`.
 
-Use another model:
+### Recommended Model
+
+Use **`gpt-4o-mini-tts`** for general speech generation and expressive narration.
+It is the CLI default and supports all built-in voices and `--instructions`:
 
 ```sh
-uv run --env-file .env voicer --model gpt-4o-mini-tts "Hello"
+uv run --env-file .env voicer --model gpt-4o-mini-tts --voice marin \
+  --instructions "Speak warmly and naturally." "Hello"
 ```
 
 You can also set `OPENAI_TTS_MODEL` in `.env`.
 
-`gpt-4o-mini-tts` uses OpenAI's current alias. To select a documented snapshot:
+As of 2026-10-06, OpenAI lists **`gpt-4o-mini-tts-2025-12-15`** as the default
+snapshot behind the `gpt-4o-mini-tts` alias. Use the alias for OpenAI's current
+default version, or pin the snapshot for consistent model behavior across runs:
 
 ```sh
 uv run --env-file .env voicer --model gpt-4o-mini-tts-2025-12-15 "Hello"
 ```
+
+`tts-1` and `tts-1-hd` are older alternatives with fewer voices and no support
+for `--instructions`. Choose them when you specifically need their behavior;
+`tts-1` favors lower latency, while `tts-1-hd` favors higher quality within that
+older model family.
+
+See OpenAI's [text-to-speech guide](https://developers.openai.com/api/docs/guides/text-to-speech)
+and [model reference](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts)
+for the current recommendations and snapshots.
 
 Model names remain open-ended to allow new models; local model-specific checks
 cover known model families. Availability and account access are determined by OpenAI.
