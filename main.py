@@ -1,8 +1,8 @@
 import argparse
-from collections.abc import Sequence
 import os
 import re
 import sys
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from time import perf_counter
