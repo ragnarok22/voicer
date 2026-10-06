@@ -186,7 +186,8 @@ Use the Makefile to run development tools through `uv`:
 make help          # List available commands (also the default for make)
 make format        # Format Python code with Ruff
 make format-check  # Check formatting without changing files
-make lint          # Check Python code with Ruff
+make lint          # Fix auto-fixable lint issues with Ruff
+make lint-check    # Check Python code with Ruff without changing files
 make typecheck     # Check Python types with ty
 make test          # Run tests with pytest
 ```
@@ -202,5 +203,5 @@ Run the same checks locally:
 
 ```sh
 uv sync --locked --group dev
-make format-check lint typecheck test
+make format-check lint-check typecheck test
 ```
