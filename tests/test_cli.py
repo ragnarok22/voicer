@@ -18,6 +18,7 @@ def test_main_lists_voices_without_api_key(monkeypatch, capsys) -> None:
 
 def test_main_dry_run_does_not_require_api_key(monkeypatch, capsys) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(main, "count_input_tokens", lambda text, model: 2)
 
     main.main(["--dry-run", "--voice", "alloy,echo", "Hello world"])
 

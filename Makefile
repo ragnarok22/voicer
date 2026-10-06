@@ -1,6 +1,8 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help format format-check lint lint-check typecheck test
+.PHONY: help format format-check lint lint-check typecheck test coverage check
+
+TEST_ARGS ?=
 
 help:
 	@printf '%s\n' \
@@ -9,22 +11,29 @@ help:
 		'make lint          Fix auto-fixable lint issues with Ruff' \
 		'make lint-check    Check Python code with Ruff without changing files' \
 		'make typecheck     Check Python types with ty' \
-		'make test          Run tests with pytest'
+		'make test          Run tests with pytest' \
+		'make coverage      Run tests with branch coverage' \
+		'make check         Run formatting, lint, types and coverage checks'
 
 format:
-	uv run ruff format .
+	uv run --locked ruff format .
 
 format-check:
-	uv run ruff format --check .
+	uv run --locked ruff format --check .
 
 lint:
-	uv run ruff check --fix .
+	uv run --locked ruff check --fix .
 
 lint-check:
-	uv run ruff check .
+	uv run --locked ruff check .
 
 typecheck:
-	uv run ty check
+	uv run --locked ty check
 
 test:
-	uv run pytest
+	uv run --locked pytest $(TEST_ARGS)
+
+coverage:
+	uv run --locked pytest --cov=main --cov-branch --cov-report=term-missing --cov-report=xml $(TEST_ARGS)
+
+check: format-check lint-check typecheck coverage

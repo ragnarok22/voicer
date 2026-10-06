@@ -1,4 +1,5 @@
 import json
+from io import StringIO
 from pathlib import Path
 
 import httpx2
@@ -160,3 +161,62 @@ def test_invalid_utf8_file_is_a_cli_error(tmp_path: Path) -> None:
     input_file.write_bytes(b"\xff")
     with pytest.raises(SystemExit, match="UTF-8"):
         main.main(["--dry-run", "--file", str(input_file)])
+
+
+@pytest.mark.parametrize("source", ["file", "stdin", "pipe", "interactive"])
+def test_cli_input_sources(monkeypatch, tmp_path, capsys, source):
+    arguments = ["--dry-run"]
+    if source == "file":
+        path = tmp_path / "input.txt"
+        path.write_text("  Hola mundo\n", encoding="utf-8")
+        arguments.extend(["--file", str(path)])
+    elif source in ("stdin", "pipe"):
+        monkeypatch.setattr(main.sys, "stdin", StringIO("  Hola mundo\n"))
+        if source == "stdin":
+            arguments.append("--stdin")
+    else:
+        stream = StringIO()
+        monkeypatch.setattr(stream, "isatty", lambda: True)
+        monkeypatch.setattr(main.sys, "stdin", stream)
+        lines = iter(["Hola mundo", ""])
+        monkeypatch.setattr("builtins.input", lambda: next(lines))
+    main.main(arguments)
+    assert "2 (2 per file x 1)" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("exists", [False, True])
+def test_invalid_file_input_is_actionable(tmp_path, exists):
+    path = tmp_path / "input.txt"
+    if exists:
+        path.write_text("  ", encoding="utf-8")
+    with pytest.raises(SystemExit, match="empty|Could not read"):
+        main.main(["--dry-run", "--file", str(path)])
+
+
+def test_cli_failure_closes_client(monkeypatch, tmp_path):
+    client = openai.OpenAI(
+        api_key="test-key",
+        max_retries=0,
+        http_client=httpx2.Client(
+            transport=httpx2.MockTransport(
+                lambda request: httpx2.Response(
+                    401, json={"error": {"message": "Unauthorized"}}
+                )
+            )
+        ),
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", lambda **kwargs: client)
+    with pytest.raises(SystemExit, match="authentication"):
+        main.main(["--output", str(tmp_path / "voice.mp3"), "Hola"])
+    assert client.is_closed()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_cli_cancellation_is_clean(monkeypatch):
+    def interrupted(argv):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(main, "main", interrupted)
+    with pytest.raises(SystemExit, match="cancelled"):
+        main.cli()

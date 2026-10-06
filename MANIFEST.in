@@ -1,0 +1,2 @@
+include Makefile .python-version uv.lock .env.example
+recursive-include tests *.py
