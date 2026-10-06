@@ -4,7 +4,8 @@ import httpx2 as httpx
 import openai
 import pytest
 
-from main import format_openai_error, generate_audio_files
+from voicer.audio import generate_audio_files
+from voicer.errors import format_openai_error
 
 
 def rate_limit_error() -> openai.RateLimitError:

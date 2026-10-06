@@ -15,16 +15,17 @@ dependencies = [
 ]
 
 [project.scripts]
-voicer = "main:cli"
+voicer = "voicer.cli:cli"
 
 [tool.setuptools]
 py-modules = ["main"]
+packages = ["voicer"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 
 [tool.coverage.run]
-source = ["main"]
+source = ["voicer"]
 branch = true
 
 [tool.coverage.report]

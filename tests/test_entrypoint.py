@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 
+@pytest.mark.parametrize("entrypoint", ["console", "script", "module"])
 @pytest.mark.parametrize(
     ("arguments", "code", "expected"),
     [
@@ -17,13 +18,22 @@ import pytest
         (["Hello"], 1, "Set OPENAI_API_KEY"),
     ],
 )
-def test_installed_entrypoint_outside_repository(tmp_path, arguments, code, expected):
-    # Executable installed from [project.scripts], independent of pythonpath=["."].
-    executable = Path(sys.executable).parent / (
-        "voicer.exe" if os.name == "nt" else "voicer"
-    )
+def test_cli_entrypoints_outside_repository(
+    tmp_path, entrypoint, arguments, code, expected
+):
+    # Entry points must work independently of pytest's pythonpath=["."].
+    if entrypoint == "console":
+        executable = Path(sys.executable).parent / (
+            "voicer.exe" if os.name == "nt" else "voicer"
+        )
+        command = [str(executable)]
+    elif entrypoint == "script":
+        script = Path(__file__).resolve().parent.parent / "main.py"
+        command = [sys.executable, str(script)]
+    else:
+        command = [sys.executable, "-m", "voicer"]
     result = subprocess.run(
-        [str(executable), *arguments],
+        [*command, *arguments],
         cwd=tmp_path,
         capture_output=True,
         text=True,

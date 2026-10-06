@@ -34,6 +34,6 @@ test:
 	uv run --locked pytest $(TEST_ARGS)
 
 coverage:
-	uv run --locked pytest --cov=main --cov-branch --cov-report=term-missing --cov-report=xml $(TEST_ARGS)
+	uv run --locked pytest --cov=voicer --cov-branch --cov-report=term-missing --cov-report=xml $(TEST_ARGS)
 
 check: format-check lint-check typecheck coverage

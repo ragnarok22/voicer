@@ -7,7 +7,8 @@ import httpx2
 import openai
 import pytest
 
-import main
+from voicer import audio
+from voicer.config import DEFAULT_MODEL, RESPONSE_FORMATS, ResponseFormat
 
 
 def client_for(handler: Callable[[httpx2.Request], httpx2.Response]) -> openai.OpenAI:
@@ -23,17 +24,17 @@ def generate(
     tmp_path: Path,
     *,
     voices: list[str] | None = None,
-    response_format: main.ResponseFormat = "mp3",
+    response_format: ResponseFormat = "mp3",
     output_file: Path | None = None,
     overwrite: bool = False,
     instructions: str | None = None,
     speed: float = 1.0,
 ) -> list[Path]:
-    return main.generate_audio_files(
+    return audio.generate_audio_files(
         client=client,
         voices=voices if voices is not None else ["marin"],
         text="Hello",
-        model=main.DEFAULT_MODEL,
+        model=DEFAULT_MODEL,
         output_dir=tmp_path,
         timestamp="fixed",
         response_format=response_format,
@@ -44,7 +45,7 @@ def generate(
     )
 
 
-@pytest.mark.parametrize("response_format", main.RESPONSE_FORMATS)
+@pytest.mark.parametrize("response_format", RESPONSE_FORMATS)
 @pytest.mark.parametrize("instructions", [None, "Speak softly"])
 def test_speech_http_contract(tmp_path, response_format, instructions) -> None:
     requests = []
@@ -68,7 +69,7 @@ def test_speech_http_contract(tmp_path, response_format, instructions) -> None:
     assert request.url.path == "/v1/audio/speech"
     assert request.headers["accept"] == "application/octet-stream"
     expected = {
-        "model": main.DEFAULT_MODEL,
+        "model": DEFAULT_MODEL,
         "voice": "marin",
         "input": "Hello",
         "response_format": response_format,
@@ -244,9 +245,9 @@ def test_filesystem_failures_are_clear_and_cleanup(
     if operation == "mkdir":
         monkeypatch.setattr(Path, "mkdir", fail)
     elif operation == "temporary":
-        monkeypatch.setattr(main.tempfile, "NamedTemporaryFile", fail)
+        monkeypatch.setattr(audio.tempfile, "NamedTemporaryFile", fail)
     else:
-        monkeypatch.setattr(main.os, "replace", fail)
+        monkeypatch.setattr(audio.os, "replace", fail)
 
     def handler(request):
         requests.append(request)
@@ -313,7 +314,7 @@ def test_preflight_cleans_all_temporaries_when_later_reservation_fails(
     tmp_path,
     monkeypatch,
 ) -> None:
-    reserve = main.tempfile.NamedTemporaryFile
+    reserve = audio.tempfile.NamedTemporaryFile
     reservations = 0
     requests = []
 
@@ -324,7 +325,7 @@ def test_preflight_cleans_all_temporaries_when_later_reservation_fails(
             raise OSError(28, "No space left on device")
         return reserve(*args, **kwargs)
 
-    monkeypatch.setattr(main.tempfile, "NamedTemporaryFile", reserve_or_fail)
+    monkeypatch.setattr(audio.tempfile, "NamedTemporaryFile", reserve_or_fail)
 
     def handler(request):
         requests.append(request)

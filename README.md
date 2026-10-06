@@ -274,6 +274,31 @@ uv run voicer --help
 
 ## Development
 
+### Project Structure
+
+The implementation lives in the `voicer/` package:
+
+```text
+main.py                  # Thin script entry point
+voicer/
+├── __init__.py           # Package definition
+├── __main__.py           # python -m voicer entry point
+├── cli.py                # Argument parsing, option validation, and orchestration
+├── config.py             # Defaults, voice catalog, formats, types, and limits
+├── models.py             # Shared model-family detection
+├── voices.py             # Voice selection and model compatibility
+├── text_input.py         # Argument, file, stdin, and interactive input
+├── estimates.py          # Token counting, input limits, and text-cost estimates
+├── reporting.py          # Console estimates, summaries, and timing output
+├── audio.py              # Streaming generation and safe file publication
+└── errors.py             # CLI errors and safe OpenAI error messages
+```
+
+The installed `voicer` command, `uv run python main.py`, and
+`uv run python -m voicer` all use `voicer.cli`.
+
+### Development Commands
+
 Use the Makefile to run development tools through `uv`:
 
 ```sh
@@ -289,7 +314,7 @@ make check         # Run all non-mutating verification checks
 ```
 
 Use `make test TEST_ARGS="tests/test_audio.py -q"` for a focused run. Coverage
-checks enforce a 90% minimum for `main.py`, including branches. Tests use the
+checks enforce a 90% minimum for the `voicer` package, including branches. Tests use the
 real OpenAI SDK with mocked HTTPX2 transport and block socket connections;
 they require no credentials or paid API calls.
 

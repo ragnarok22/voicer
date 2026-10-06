@@ -1,6 +1,6 @@
 import pytest
 
-from main import read_text
+from voicer.text_input import read_text
 
 
 def test_read_text_joins_lines_until_empty_input(monkeypatch) -> None:

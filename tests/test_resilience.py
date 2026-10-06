@@ -5,7 +5,9 @@ import httpx2
 import openai
 import pytest
 
-import main
+from voicer.audio import generate_audio_files
+from voicer.config import DEFAULT_MODEL
+from voicer.estimates import usd_per_1m_input_tokens
 
 
 class BrokenAudio(httpx2.SyncByteStream):
@@ -31,11 +33,11 @@ def test_failed_download_preserves_destination(tmp_path: Path, existing: bool) -
         ) as client,
         pytest.raises(SystemExit, match="(?i)(stream|connection|download)"),
     ):
-        main.generate_audio_files(
+        generate_audio_files(
             client=client,
             voices=["marin"],
             text="Hello",
-            model=main.DEFAULT_MODEL,
+            model=DEFAULT_MODEL,
             output_dir=tmp_path,
             output_file=output,
             overwrite=existing,
@@ -64,11 +66,11 @@ def test_sdk_quota_error_is_recognized(tmp_path: Path) -> None:
         ) as client,
         pytest.raises(SystemExit, match="OpenAI quota exceeded"),
     ):
-        main.generate_audio_files(
+        generate_audio_files(
             client=client,
             voices=["marin"],
             text="Hello",
-            model=main.DEFAULT_MODEL,
+            model=DEFAULT_MODEL,
             output_dir=tmp_path,
         )
 
@@ -77,9 +79,9 @@ def test_sdk_quota_error_is_recognized(tmp_path: Path) -> None:
 def test_price_must_be_finite_and_nonnegative(monkeypatch, price: str) -> None:
     monkeypatch.setenv("OPENAI_TTS_USD_PER_1M_TOKENS", price)
     with pytest.raises(SystemExit, match="finite.*non-negative"):
-        main.usd_per_1m_input_tokens(main.DEFAULT_MODEL)
+        usd_per_1m_input_tokens(DEFAULT_MODEL)
 
 
 def test_legacy_model_does_not_use_token_price(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_TTS_USD_PER_1M_TOKENS", "0.6")
-    assert main.usd_per_1m_input_tokens("tts-1") is None
+    assert usd_per_1m_input_tokens("tts-1") is None

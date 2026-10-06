@@ -1,7 +1,9 @@
 import pytest
 
-import main
-from main import filename_base, format_cost, format_seconds, usd_per_1m_input_tokens
+from voicer import estimates
+from voicer.audio import filename_base
+from voicer.estimates import format_cost, usd_per_1m_input_tokens
+from voicer.reporting import format_seconds
 
 
 @pytest.fixture(autouse=True)
@@ -9,8 +11,10 @@ def offline_tokenizer_resources(monkeypatch) -> None:
     def unexpected_resource_load(*args, **kwargs):
         pytest.fail("Tokenizer tests must provide in-memory encoding resources")
 
-    monkeypatch.setattr(main.tiktoken, "encoding_for_model", unexpected_resource_load)
-    monkeypatch.setattr(main.tiktoken, "get_encoding", unexpected_resource_load)
+    monkeypatch.setattr(
+        estimates.tiktoken, "encoding_for_model", unexpected_resource_load
+    )
+    monkeypatch.setattr(estimates.tiktoken, "get_encoding", unexpected_resource_load)
 
 
 @pytest.mark.parametrize(
@@ -89,9 +93,9 @@ def test_count_input_tokens_uses_model_encoding(monkeypatch) -> None:
         assert model == "known-model"
         return Encoding()
 
-    monkeypatch.setattr(main.tiktoken, "encoding_for_model", encoding_for_model)
+    monkeypatch.setattr(estimates.tiktoken, "encoding_for_model", encoding_for_model)
 
-    assert main.count_input_tokens("one two three", "known-model") == 3
+    assert estimates.count_input_tokens("one two three", "known-model") == 3
 
 
 def test_count_input_tokens_falls_back_for_unknown_model(monkeypatch) -> None:
@@ -107,10 +111,10 @@ def test_count_input_tokens_falls_back_for_unknown_model(monkeypatch) -> None:
         assert name == "o200k_base"
         return Encoding()
 
-    monkeypatch.setattr(main.tiktoken, "encoding_for_model", encoding_for_model)
-    monkeypatch.setattr(main.tiktoken, "get_encoding", get_encoding)
+    monkeypatch.setattr(estimates.tiktoken, "encoding_for_model", encoding_for_model)
+    monkeypatch.setattr(estimates.tiktoken, "get_encoding", get_encoding)
 
-    assert main.count_input_tokens("abc", "unknown-model") == 3
+    assert estimates.count_input_tokens("abc", "unknown-model") == 3
 
 
 @pytest.mark.parametrize("model", ["known-model", "unknown-model"])
@@ -122,7 +126,7 @@ def test_count_input_tokens_treats_special_literals_as_ordinary_text(
     monkeypatch, model: str, text: str
 ) -> None:
     # Real tiktoken behavior, with a fabricated byte vocabulary: no cache or downloads.
-    encoding = main.tiktoken.Encoding(
+    encoding = estimates.tiktoken.Encoding(
         "test-byte-encoding",
         pat_str=r"(?s:.)",
         mergeable_ranks={bytes([byte]): byte for byte in range(256)},
@@ -140,7 +144,7 @@ def test_count_input_tokens_treats_special_literals_as_ordinary_text(
         assert model == "unknown-model"
         return encoding
 
-    monkeypatch.setattr(main.tiktoken, "encoding_for_model", encoding_for_model)
-    monkeypatch.setattr(main.tiktoken, "get_encoding", get_encoding)
+    monkeypatch.setattr(estimates.tiktoken, "encoding_for_model", encoding_for_model)
+    monkeypatch.setattr(estimates.tiktoken, "get_encoding", get_encoding)
 
-    assert main.count_input_tokens(text, model) == len(text.encode("utf-8"))
+    assert estimates.count_input_tokens(text, model) == len(text.encode("utf-8"))

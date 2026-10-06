@@ -1,6 +1,7 @@
 import pytest
 
-from main import VOICES, select_voices
+from voicer.config import VOICES
+from voicer.voices import select_voices
 
 
 @pytest.mark.parametrize(
