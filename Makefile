@@ -17,6 +17,9 @@ format-check:
 	uv run ruff format --check .
 
 lint:
+	uv run ruff check --fix .
+
+lint-check:
 	uv run ruff check .
 
 typecheck:
